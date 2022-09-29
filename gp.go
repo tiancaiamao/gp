@@ -15,12 +15,17 @@ func New(n int) Pool {
 	return wp
 }
 
+func (p Pool) Go(f func()) {
+	w := <-p
+	w.run(f)
+}
+
 type worker struct {
 	ch chan func()
 	Pool
 }
 
-func (w worker) Run(f func()) {
+func (w worker) run(f func()) {
 	w.ch <- f
 }
 
