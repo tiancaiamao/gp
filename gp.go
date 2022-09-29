@@ -3,20 +3,21 @@ package gp
 type Pool chan worker
 
 func New(n int) Pool {
-	wp := make(chan worker, n)
-	for i := 0; i < n; i++ {
-		w := worker{
-			ch:         make(chan func()),
-			Pool: wp,
-		}
-		go workerGoroutine(w)
-		wp <- w
-	}
-	return wp
+	return make(chan worker, n)
 }
 
 func (p Pool) Go(f func()) {
-	w := <-p
+	var w worker
+	select {
+	case w = <-p:
+	default:
+		w = worker{
+			ch:   make(chan func()),
+			Pool: p,
+		}
+		go workerGoroutine(w)
+	}
+
 	w.run(f)
 }
 
@@ -33,8 +34,12 @@ func (w worker) run(f func()) {
 func workerGoroutine(w worker) {
 	for f := range w.ch {
 		f()
-		// What's special about it is that the worker itself is put back to the pool,
-		// after handling one task.
-		w.Pool <- w
+
+		select {
+		case w.Pool <- w:
+		default:
+			return
+		}
+
 	}
 }
