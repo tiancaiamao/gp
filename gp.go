@@ -6,7 +6,7 @@ func New(n int) Pool {
 	wp := make(chan worker, n)
 	for i := 0; i < n; i++ {
 		w := worker{
-			ch:         make(chan Runnable),
+			ch:         make(chan func()),
 			Pool: wp,
 		}
 		go workerGoroutine(w)
@@ -15,23 +15,19 @@ func New(n int) Pool {
 	return wp
 }
 
-type Runnable interface {
-	Run()
-}
-
 type worker struct {
-	ch chan Runnable
+	ch chan func()
 	Pool
 }
 
-func (w worker) Run(f Runnable) {
+func (w worker) Run(f func()) {
 	w.ch <- f
 }
 
 // worker bind with a goroutine,
 func workerGoroutine(w worker) {
 	for f := range w.ch {
-		f.Run()
+		f()
 		// What's special about it is that the worker itself is put back to the pool,
 		// after handling one task.
 		w.Pool <- w
