@@ -2,9 +2,7 @@
 
 ## Rational
 
-Goroutine is cheap, but not free.
-
-Especially when the goroutine trigger `runtime.morestack`, the cost become high.
+Goroutine is cheap, but not free. Especially when the goroutine trigger `runtime.morestack`, the cost become high.
 
 This package is mainly aimed to handle that. Put back the stack-growed goroutine to a pool, and reuse that goroutine can eliminate the `runtime.morestack` cost.
 

@@ -5,7 +5,8 @@ import (
 )
 
 type Pool struct {
-	workers     chan worker
+	ch          chan func()
+	count       chan struct{}
 	idleRecycle time.Duration
 }
 
@@ -14,54 +15,45 @@ type Pool struct {
 // The dur parameter controls the idle recycle behaviour. If the goroutine in the pool is idle for a while, it will be recycled.
 func New(n int, dur time.Duration) *Pool {
 	return &Pool{
-		workers:     make(chan worker, n),
+		ch:          make(chan func()),
+		count:       make(chan struct{}, n),
 		idleRecycle: dur,
 	}
 }
 
 // Run execute the function in a seperate goroutine,
 func (p *Pool) Go(f func()) {
-	var w worker
-	// Take a worker out from the pool
 	select {
-	case w = <-p.workers:
+	case p.ch <- f:
 	default:
-		w = worker{
-			ch:   make(chan func()),
-			Pool: p,
-		}
-		go workerGoroutine(w, p.idleRecycle)
+		go worker(p)
+		p.ch <- f
 	}
-	// Let the worker run the task
-	w.run(f)
 }
 
-type worker struct {
-	ch chan func()
-	*Pool
-}
-
-func (w worker) run(f func()) {
-	w.ch <- f
-}
-
-// worker is bind with a goroutine,
-func workerGoroutine(w worker, dur time.Duration) {
-	t := time.NewTimer(dur)
+func worker(p *Pool) {
+	t := time.NewTimer(p.idleRecycle)
+	var inPool bool
 	for {
 		select {
-		case f := <-w.ch:
+		case f := <-p.ch:
 			f()
+
+			// When worker finish a task, it would decide whether to reuse.
 			select {
-			case w.Pool.workers <- w:
+			case p.count <- struct{}{}:
 				if !t.Stop() {
 					<-t.C
 				}
-				t.Reset(dur)
+				t.Reset(p.idleRecycle)
+				inPool = true
 			default:
 				return
 			}
 		case <-t.C:
+			if inPool {
+				<-p.count
+			}
 			return
 		}
 	}
