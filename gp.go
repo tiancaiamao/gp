@@ -9,6 +9,9 @@ type Pool struct {
 	idleRecycle time.Duration
 }
 
+// New create a new goroutine pool.
+// The pool size is n, means that it will keep at most n goroutines in the pool.
+// The dur parameter controls the idle recycle behaviour. If the goroutine in the pool is idle for a while, it will be recycled.
 func New(n int, dur time.Duration) *Pool {
 	return &Pool{
 		workers:     make(chan worker, n),
@@ -16,9 +19,10 @@ func New(n int, dur time.Duration) *Pool {
 	}
 }
 
+// Run execute the function in a seperate goroutine,
 func (p *Pool) Go(f func()) {
 	var w worker
-	// Get a worker from the worker pool
+	// Take a worker out from the pool
 	select {
 	case w = <-p.workers:
 	default:
