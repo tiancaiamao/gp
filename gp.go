@@ -1,45 +1,64 @@
 package gp
 
-type Pool chan worker
+import (
+	"time"
+)
 
-func New(n int) Pool {
-	return make(chan worker, n)
+type Pool struct {
+	workers     chan worker
+	idleRecycle time.Duration
 }
 
-func (p Pool) Go(f func()) {
+func New(n int, dur time.Duration) *Pool {
+	return &Pool{
+		workers:     make(chan worker, n),
+		idleRecycle: dur,
+	}
+}
+
+func (p *Pool) Go(f func()) {
 	var w worker
+	// Get a worker from the worker pool
 	select {
-	case w = <-p:
+	case w = <-p.workers:
 	default:
 		w = worker{
 			ch:   make(chan func()),
 			Pool: p,
 		}
-		go workerGoroutine(w)
+		go workerGoroutine(w, p.idleRecycle)
 	}
-
+	// Let the worker run the task
 	w.run(f)
 }
 
 type worker struct {
 	ch chan func()
-	Pool
+	*Pool
 }
 
 func (w worker) run(f func()) {
 	w.ch <- f
 }
 
-// worker bind with a goroutine,
-func workerGoroutine(w worker) {
-	for f := range w.ch {
-		f()
-
+// worker is bind with a goroutine,
+func workerGoroutine(w worker, dur time.Duration) {
+	t := time.NewTimer(dur)
+	for {
 		select {
-		case w.Pool <- w:
-		default:
+		case f := <-w.ch:
+			f()
+			select {
+			case w.Pool.workers <- w:
+				if !t.Stop() {
+					<-t.C
+				}
+				t.Reset(dur)
+			default:
+				return
+			}
+		case <-t.C:
 			return
 		}
-
 	}
 }
