@@ -8,6 +8,7 @@ type Pool struct {
 	ch          chan func()
 	count       chan struct{}
 	idleRecycle time.Duration
+	closed      chan struct{}
 }
 
 // New create a new goroutine pool.
@@ -18,6 +19,7 @@ func New(n int, dur time.Duration) *Pool {
 		ch:          make(chan func()),
 		count:       make(chan struct{}, n),
 		idleRecycle: dur,
+		closed:      make(chan struct{}),
 	}
 }
 
@@ -25,6 +27,7 @@ func New(n int, dur time.Duration) *Pool {
 func (p *Pool) Go(f func()) {
 	select {
 	case p.ch <- f:
+	case <-p.closed:
 	default:
 		go worker(p)
 		p.ch <- f
@@ -55,6 +58,15 @@ func worker(p *Pool) {
 				<-p.count
 			}
 			return
+		case <-p.closed:
+			return
 		}
 	}
+}
+
+// Close releases the goroutines in the Pool.
+// After this operation, inflight tasks may still execute until finish.
+// But all the new coming tasks will be simply ignored.
+func (p *Pool) Close() {
+	close(p.closed)
 }
