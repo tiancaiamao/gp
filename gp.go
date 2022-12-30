@@ -29,39 +29,38 @@ func (p *Pool) Go(f func()) {
 	case p.ch <- f:
 	case <-p.closed:
 	default:
-		go worker(p)
-		p.ch <- f
+		go worker(p, f)
 	}
 }
 
-func worker(p *Pool) {
+func worker(p *Pool, fn func()) {
+	fn()
+
+	// When worker finish a task, it would decide whether to reuse.
+	select {
+	case p.count <- struct{}{}:
+	default:
+		return
+	}
+
+	// Enter the worker loop.
+	done := false
 	t := time.NewTimer(p.idleRecycle)
-	var inPool bool
-	for {
+	for !done {
 		select {
 		case f := <-p.ch:
 			f()
-
-			// When worker finish a task, it would decide whether to reuse.
-			select {
-			case p.count <- struct{}{}:
-				if !t.Stop() {
-					<-t.C
-				}
-				t.Reset(p.idleRecycle)
-				inPool = true
-			default:
-				return
+			if !t.Stop() {
+				<-t.C
 			}
+			t.Reset(p.idleRecycle)
 		case <-t.C:
-			if inPool {
-				<-p.count
-			}
-			return
+			done = true
 		case <-p.closed:
-			return
+			done = true
 		}
 	}
+	<-p.count
 }
 
 // Close releases the goroutines in the Pool.
