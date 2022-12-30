@@ -42,10 +42,30 @@ func worker(p *Pool, fn func()) {
 	default:
 		return
 	}
+	defer func() { <-p.count }()
 
 	// Enter the worker loop.
-	done := false
+	if p.idleRecycle == 0 {
+		workerLoopSimple(p)
+	} else {
+		workerLoop(p)
+	}
+}
+
+func workerLoopSimple(p *Pool) {
+	for {
+		select {
+		case f := <-p.ch:
+			f()
+		case <-p.closed:
+			return
+		}
+	}
+}
+
+func workerLoop(p *Pool) {
 	t := time.NewTimer(p.idleRecycle)
+	done := false
 	for !done {
 		select {
 		case f := <-p.ch:
@@ -60,7 +80,6 @@ func worker(p *Pool, fn func()) {
 			done = true
 		}
 	}
-	<-p.count
 }
 
 // Close releases the goroutines in the Pool.
