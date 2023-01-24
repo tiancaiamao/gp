@@ -2,6 +2,7 @@ package gp
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -12,10 +13,10 @@ func TestT(t *testing.T) {
 	wg.Add(30)
 
 	pool := New(3, 10*time.Second)
-	a := 3
+	var a int32 = 3
 	for i := 0; i < N; i++ {
 		pool.Go(func() {
-			a++
+			atomic.AddInt32(&a, 1)
 			wg.Done()
 		})
 	}
